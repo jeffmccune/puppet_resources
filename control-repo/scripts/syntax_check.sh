@@ -2,6 +2,8 @@
 
 # Error out if there are any failures
 set -e
+set -o pipefail
+set -u
 
 # Notes
 # xargs -P2 is used to run 2 parallel processes at once.  This speeds up

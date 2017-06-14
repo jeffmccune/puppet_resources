@@ -1,8 +1,9 @@
 #!/bin/bash
 
 # Error out if there are any failures
-set -u
 set -e
+set -o pipefail
+set -u
 
 # Notes
 # xargs -P2 is used to run 2 parallel processes at once.  This speeds up
@@ -25,11 +26,27 @@ if ! (which bundle 2>/dev/null); then
   gem install bundler --no-ri --no-rdoc
 fi
 
-set -x
+# List the files changes from $BASEBRANCH on stdout
+files_changed() {
+  # File status flags:
+  # M modified - File has been modified
+  # C copy-edit - File has been copied and modified
+  # R rename-edit - File has been renamed and modified
+  # A added - File has been added
+  # D deleted - File has been deleted
+  # U unmerged - File has conflicts after a merge
+  git diff --name-status "${BASEBRANCH:=production}" \
+    | awk '$1 ~ /^[MCRA]$/' \
+    | cut -f2-
+}
 
 bundle install --path .bundle/gems/
-bundle exec puppet-lint manifests
-bundle exec puppet-lint site
+
+# Lint only the manifest files changed
+files_changed \
+  | awk '/manifests\/.*\.(pp)$/' \
+  | xargs --no-run-if-empty -t -P$cores -n1 \
+  bundle exec puppet-lint
 
 # vim:tabstop=2
 # vim:shiftwidth=2
