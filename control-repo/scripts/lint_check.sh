@@ -29,10 +29,12 @@ export GEM_HOME="${HOME}/jobs/${CI_JOB_NAME:-lint}/gem/${gem_suffix}"
 # e.g. /home/gitlab-runner/.gem/ruby/2.1.0
 export PATH="${GEM_HOME}/bin:$PATH"
 
+echo '######## BEGIN DEPENDENCY SETUP #########'
+
 # Display the gem environment
 gem env
 
-if ! (which bundle 2>/dev/null); then
+if ! (which bundle 2>&1 >/dev/null); then
   gem install bundler --no-ri --no-rdoc
 fi
 
@@ -53,11 +55,17 @@ files_changed() {
 # Install dependencies
 bundle install
 
+echo '######## END DEPENDENCY SETUP #########'
+echo
+echo
+echo '######## BEGIN LINT CHECKS #########'
 # Lint only the manifest files changed
 files_changed \
   | awk '/manifests\/.*\.(pp)$/' \
   | xargs --no-run-if-empty -t -P$cores -n1 \
   bundle exec puppet-lint
+
+echo '######## END LINT CHECKS #########'
 
 # vim:tabstop=2
 # vim:shiftwidth=2
