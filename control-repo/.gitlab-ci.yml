@@ -12,22 +12,10 @@ Syntax Check:
 # NOTE: The playground branches are intended for individuals to develop their
 # changes.  Any branch starting with "playground" will automatically deploy to
 # the puppetservers when pushed to the upstream repository.
-Deploy to Puppet A:
+Deploy to Puppet:
   stage: deploy
   variables:
-    SITE: A
-  only:
-    - production
-    - /^playground/
-  script:
-    - scripts/puppet_deploy.sh
-
-# Remove `when: manual` once Site B is online and names resolve.
-Deploy to Puppet B:
-  stage: deploy
-  when: manual
-  variables:
-    SITE: B
+    MASTER: puppet.acme.com
   only:
     - production
     - /^playground/
