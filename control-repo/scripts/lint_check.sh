@@ -17,10 +17,20 @@ fi
 
 # Use Puppet Enterprise Ruby to check ruby and yaml files
 export PATH="/opt/puppetlabs/puppet/bin:/opt/puppetlabs/bin:$PATH"
+
+# Localize Gems on a per-job basis to prevent conflicts
+gem_home="$(gem env gempath | cut -d: -f1)"
+# Trim off the leading part of $HOME
+gem_suffix=${gem_home##*/.gem/}
+# Set GEM_HOME to a job specific location
+export GEM_HOME="${HOME}/jobs/${CI_JOB_NAME:-lint}/gem/${gem_suffix}"
+
 # If we need to install a gem, do so into HOME
 # e.g. /home/gitlab-runner/.gem/ruby/2.1.0
-export GEM_HOME="$(gem env gempath | cut -d: -f1)"
 export PATH="${GEM_HOME}/bin:$PATH"
+
+# Display the gem environment
+gem env
 
 if ! (which bundle 2>/dev/null); then
   gem install bundler --no-ri --no-rdoc
@@ -40,7 +50,8 @@ files_changed() {
     | cut -f2-
 }
 
-bundle install --path .bundle/gems/
+# Install dependencies
+bundle install
 
 # Lint only the manifest files changed
 files_changed \
