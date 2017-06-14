@@ -43,3 +43,7 @@ find . -name '.git' -o -name '*.json' -print0 \
 find . -name '.git' -o -name '*.rb' -print0 \
   | xargs --no-run-if-empty -0 -t -P$cores -n1 \
   ruby -c
+
+# vim:tabstop=2
+# vim:shiftwidth=2
+# vim:expandtab

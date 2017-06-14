@@ -1,89 +1,60 @@
 #!/bin/bash
 set -u
 
-# The use of `eval` is to support deployment to multiple PE Monolithic masters.
-# The CI jobs defined in `/.gitlab-ci.yml` should set SITE=A or SITE=B.  Then,
-# in the Gitlab "variables" configuration of the control-repository, the
-# following variables should be defined, as examples:
-#
-# * SITE_A_URL=https://master1.site1.acme.com:8170/code-manager/v1/deploys
-# * SITE_A_TOKEN=XXXXXXX
-# * SITE_B_URL=https://master1.site2.acme.com:8170/code-manager/v1/deploys
-# * SITE_B_TOKEN=YYYYYYY
-
-if [ -n "$SITE" ]; then
-  echo "Deploying to SITE=$SITE ..."
-  eval "export URL=\"\$SITE_${SITE}_URL\""
-  echo "Set URL=${URL} based on SITE_${SITE}_URL variable"
-  eval "export PUPPET_TOKEN=\"\$SITE_${SITE}_PUPPET_TOKEN\""
-  echo "Set PUPPET_TOKEN=******** based on SITE_${SITE}_PUPPET_TOKEN variable"
-fi
-
-if [ -z "${PUPPET_TOKEN:-}" ]; then
-  echo "ERROR: PUPPET_TOKEN environment variable must be set!" >&2
-  echo "SUGGESTION: Did you push to origin instead of upstream?" >&2
-  exit 1
-fi
-
+export PATH="/opt/puppetlabs/bin:$PATH"
 # Allow these environment variable to be overriden
 : ${URL:='https://puppet:8170/code-manager/v1/deploys'}
 # CI_BUILD_REF_NAME is a variable set by gitlab
 : ${ENVIRONMENT:="$CI_BUILD_REF_NAME"}
 
-# The data to send in the notification.  Documentation:
-# https://docs.puppet.com/pe/2016.4/code_mgr_scripts.html#deploys-endpoint
-JSON_DATA="{\"environments\": [\"$ENVIRONMENT\"], \"wait\": true}"
+err() {
+  echo "$1" >&2
+}
 
-echo "Sending notification to ${URL} ..."
-echo "Deploying to Puppet environment ${ENVIRONMENT}"
-echo "Notification ${JSON_DATA}"
+if [ -z "${PUPPET_TOKEN:-}" ]; then
+  err "ERROR: PUPPET_TOKEN environment variable must be set!"
+  err "SUGGESTION: Did you push to origin instead of upstream?"
+  err "PUPPET_TOKEN must be set as an environment variable in CI"
+  exit 1
+fi
 
+if ! [ -x /opt/puppetlabs/bin/puppet-code ]; then
+    err "ERROR: /opt/puppetlabs/bin/puppet-code does not exist"
+    err "SUGGESTION: Install the puppet client tools"
+    err "https://docs.puppet.com/pe/2016.4/install_pe_client_tools.html#install-on-a-linux-workstation"
+    exit 2
+fi
+
+# Save the token to a temporary file so we can use it with puppet code deploy
 scratch="$(mktemp -d)"
 remove_scratch() {
   [ -e "${scratch:-}" ] && rm -rf "$scratch"
 }
 trap remove_scratch EXIT
-body="${scratch}/body.txt"
+# Subsequent calls to mktemp should be inside our scratch dir
+export TMPDIR="$scratch"
 
-response=$(curl --silent -S -k -X POST \
-  --output "$body" \
-  -H 'Content-Type: application/json' \
-  -H "X-Authentication: $PUPPET_TOKEN" \
-  --write-out %{http_code} \
-  "$URL" \
-  -d "$JSON_DATA")
+tokenfile="$(mktemp)"
+echo -n "$PUPPET_TOKEN" > "$tokenfile"
 
-echo "# Response Body:"
-
-# Read the body and look for errors
-/opt/puppetlabs/puppet/bin/ruby -rjson <<EOSCRIPT
-deployments=JSON.load(File.read('${body}'))
-puts JSON.pretty_generate(deployments)
-puts
-deployments.each do |deployment|
-  if deployment['status'] != 'complete'
-    puts "ERROR: Deployment did not complete!"
-    puts "Full repsonse for deployment:"
-    puts JSON.pretty_generate(deployment)
-    puts
-    puts deployment['error']['msg']
-    Kernel.exit(7)
-  end
-end
-EOSCRIPT
+# Turn on debug logging after the token has been written to the file system
+set -x
+# Deploy the code
+puppet-code deploy \
+  --service-url "$URL" \
+  --token-file "$tokenfile" \
+  --wait "${ENVIRONMENT}"
 rval=$?
-if [ $rval -ne 0 ]; then
-  exit $rval
-fi
+set +x
 
-echo -n "Checking if HTTP 200 <= $response < 300 ... "
-if [ $response -gt 199 -a $response -lt 300 ]; then
-  echo "SUCCESS"
-  rval=0
-else
-  echo "FAILURE"
-  rval=22
+if [ $rval -ne 0 ]; then
+  echo "ERROR: puppet-code deploy failed with exit code $rval" >&2
+  exit $rval
 fi
 
 echo "Exiting with exit value $rval"
 exit $rval
+
+# vim:tabstop=2
+# vim:shiftwidth=2
+# vim:expandtab

@@ -3,20 +3,32 @@ stages:
   - test
   - deploy
 
-# Jobs defined  below
+# Jobs are defined below
 Syntax Check:
+  tags:
+    - puppet agent
   stage: test
   script:
     - scripts/syntax_check.sh
 
-# NOTE: The playground branches are intended for individuals to develop their
-# changes.  Any branch starting with "playground" will automatically deploy to
-# the puppetservers when pushed to the upstream repository.
+Puppet Lint Check:
+  tags:
+    - puppet agent
+  stage: test
+  script:
+    - scripts/lint_check.sh
+
+# Unless TCP port 8170 is open to the PE master, this job must execute on the
+# PE Monolithic Master itself.
 Deploy to Puppet:
+  tags:
+    - puppet monolithic master
   stage: deploy
   variables:
-    MASTER: puppet.acme.com
+    URL: https://puppet.acme.com:8170/code-manager
   only:
+    - development
+    - testing
     - production
     - /^playground/
   script:
